@@ -10,7 +10,6 @@ import (
 )
 
 func main() {
-	// time.Sleep(5 * time.Second)
 	client, err := vaultapi.NewClient(vaultapi.DefaultConfig())
 	if err != nil {
 		log.Fatal(err)

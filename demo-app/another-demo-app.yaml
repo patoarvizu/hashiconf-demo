@@ -31,6 +31,10 @@ spec:
         env:
         - name: SECRET_PATH
           value: secret/another-demo-app
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 5
 
 ---
 
