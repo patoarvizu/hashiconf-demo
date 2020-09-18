@@ -1,0 +1,54 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: another-demo-app
+  namespace: default
+  annotations:
+    vault.patoarvizu.dev/auto-configure: "true"
+
+---
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: another-demo-app
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: another-demo-app
+  template:
+    metadata:
+      labels:
+        app: another-demo-app
+      annotations:
+        vault.patoarvizu.dev/agent-auto-inject: sidecar
+    spec:
+      serviceAccountName: another-demo-app
+      containers:
+      - name: another-demo-app
+        image: patoarvizu/demos:hashiconf-demo
+        env:
+        - name: SECRET_PATH
+          value: secret/another-demo-app
+        readinessProbe:
+          tcpSocket:
+            port: 8080
+          initialDelaySeconds: 5
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: another-demo-app
+  namespace: default
+spec:
+  ports:
+  - port: 8081
+    protocol: TCP
+    targetPort: 8080
+    nodePort: 30081
+  selector:
+    app: another-demo-app
+  type: NodePort
