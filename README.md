@@ -81,3 +81,7 @@ To demonstrate that the roles and policies that are automatically created provid
 ## Go further!
 
 Check out [patoarvizu/kms-vault-operator](https://github.com/patoarvizu/kms-vault-operator), [patoarvizu/vault-dynamic-configuration-operator](https://github.com/patoarvizu/vault-dynamic-configuration-operator), and [patoarvizu/vault-agent-auto-inject-webhook](https://github.com/patoarvizu/vault-agent-auto-inject-webhook) to learn more. PRs, issues and comments are always welcome!
+
+## Something not working?
+
+Open a PR, or get in touch with me and I'd be happy to help.
