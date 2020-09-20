@@ -1,0 +1,10 @@
+releases:
+- name: vault
+  namespace: vault
+  chart: ../vault
+  version: 0.0.0
+  set:
+  - name: accessKeyId
+    value: {{ requiredEnv "DEMO_AWS_ACCESS_KEY_ID" }}
+  - name: secretAccessKey
+    value: {{ requiredEnv "DEMO_AWS_SECRET_ACCESS_KEY" }}

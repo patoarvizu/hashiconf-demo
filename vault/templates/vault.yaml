@@ -1,3 +1,48 @@
+kind: ServiceAccount
+apiVersion: v1
+metadata:
+  name: vault
+  namespace: vault
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: vault-secrets
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - "*"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: vault-auth-delegator
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:auth-delegator
+subjects:
+- kind: ServiceAccount
+  name: vault
+  namespace: vault
+---
+kind: RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: vault-secrets
+  namespace: vault
+roleRef:
+  kind: ClusterRole
+  name: vault-secrets
+  apiGroup: rbac.authorization.k8s.io
+subjects:
+- kind: ServiceAccount
+  name: vault
+  namespace: vault
+---
 apiVersion: vault.banzaicloud.com/v1alpha1
 kind: Vault
 metadata:
@@ -54,9 +99,24 @@ spec:
       description: General secrets.
       options:
         version: 1
-
 ---
-
+apiVersion: v1
+kind: Secret
+metadata:
+  name: aws-secrets
+  namespace: vault
+data:
+  AWS_ACCESS_KEY_ID: {{ required "A valid key id is required!" .Values.accessKeyId | b64enc }}
+  AWS_SECRET_ACCESS_KEY: {{ required "A valid secret access key is required!" .Values.secretAccessKey | b64enc }}
+type: Opaque
+---
+apiVersion: cert-manager.io/v1alpha2
+kind: ClusterIssuer
+metadata:
+  name: selfsigning-issuer
+spec:
+  selfSigned: {}
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -68,9 +128,9 @@ data:
     pid_file = "/home/vault/pidfile"
     auto_auth {
       method "kubernetes" {
-        mount_path = "{{ getenv "KUBERNETES_AUTH_PATH" }}"
+        mount_path = "{{ "{{" }} getenv "KUBERNETES_AUTH_PATH" }}"
         config = {
-          role = "{{ getenv "SERVICE" }}"
+          role = "{{ "{{" }} getenv "SERVICE" }}"
         }
       }
     }
@@ -78,7 +138,7 @@ data:
       use_auto_auth_token = true
     }
     vault {
-      address = "{{ getenv "TARGET_VAULT_ADDRESS" }}"
+      address = "{{ "{{" }} getenv "TARGET_VAULT_ADDRESS" }}"
       ca_path = "/opt/vault/certs/ca.crt"
     }
     listener "tcp" {

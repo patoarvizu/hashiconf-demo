@@ -1,0 +1,13 @@
+repositories:
+- name: kms-vault-operator
+  url: https://patoarvizu.github.io/kms-vault-operator
+
+releases:
+- name: kms-vault-operator
+  namespace: vault
+  chart: kms-vault-operator/kms-vault-operator
+  version: 0.2.0
+  wait: true
+  set:
+  - name: global.prometheusMonitoring.enable
+    value: false
