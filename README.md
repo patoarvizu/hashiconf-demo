@@ -51,7 +51,9 @@ Now let's tie everything together and make sure that our app can authenticate wi
   - Note that this is the "desired" state for the `Vault` custom resource, and doesn't necessarily reflect the actual configuration of Vault. It can take about a minute or two for the `vault-operator` to sync up the configuration with the backend.
 - Run `kubectl get pods` a couple of times until the pods stabilize (or with `watch`).
 - Run `kubectl get pods -l app=demo-app -o json | jq -r '.items[0].spec.containers'`. This should show you the cointainers running on that pod.
-  - Notice how there's an additional container (`vault-agent`) that's not explicitly defined in the `demo-app` deployment. Additionally, the main `demo-app` container has a new environment variable (`VAULT_ADDR`) that was injected automatically as well, to point it to the local `vault-agent` container. These modifications were done by the [`vault-agent-auto-inject-webhook`](https://github.com/patoarvizu/vault-agent-auto-inject-webhook).
+  - Notice how there's an additional container (`vault-agent`) that's not explicitly defined in the `demo-app` deployment (which you can verify by running `kubectl describe deployment demo-app`).
+  - Additionally, the main `demo-app` container has a new environment variable (`VAULT_ADDR`) that was injected automatically as well, to point it to the local `vault-agent` container.
+  - These modifications were done by the [`vault-agent-auto-inject-webhook`](https://github.com/patoarvizu/vault-agent-auto-inject-webhook).
 - Test it with `curl localhost:8080/hello`.
   - This should return `Hello, this is a secret!` (or whatever text you encrypted).
   - If you get `I can't read that secret :(`, it means the backend policies haven't synced up yet, give it a little bit more time.
@@ -62,7 +64,7 @@ Now it's time to deploy a second app and validate that they can run independentl
 
 First, let's encrypt a different secret for this second app, following similar steps as above, just make the text something else, e.g. `echo Hey, this is another secret! | aws kms encrypt --key-id alias/<my-alias> --plaintext fileb:///dev/stdin`. The rest of the steps should be the same, except you'll modify `demo-app/another-demo-app-secret.yaml` instead. Run `kubectl apply -f demo-app/another-demo-app-secret.yaml`.
 
-Now let's deploy this second application. Run `kubectl apply -f demo-app/another-demo-app.yaml`, give it a few seconds, then run `kubectl get pods` to check that both services are running successfully, and also check that the new policy was added by running `kubectl -n vault get vault vault -o json | jq -r '.spec.externalConfig.policies`. Now, run `curl localhost:8081/hello` and you should get `Hey, this is another secret!`, or whatever string you encrypted for this second app. (Remember that if you get `I can't read that secret :(`, you might need to wait a little longer for the policies to sync up.)
+Now let's deploy this second application. Run `kubectl apply -f demo-app/another-demo-app.yaml`, give it a few seconds, then run `kubectl get pods` to check that both services are running successfully, and also check that the new policy was added by running `kubectl -n vault get vault vault -o json | jq -r '.spec.externalConfig.policies`. Wait about a minute to allow the `vault-operator` to catch up, then run `curl localhost:8081/hello` and you should get `Hey, this is another secret!`, (or the string you encrypted for this second app above). Remember that if you get `I can't read that secret :(`, you might need to wait a little longer for the policies to sync up.
 
 ## Change things up
 
