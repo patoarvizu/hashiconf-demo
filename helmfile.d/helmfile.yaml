@@ -1,0 +1,7 @@
+helmfiles:
+- path: cert-manager.yaml
+- path: vault-operator.yaml
+- path: vault.yaml
+- path: vault-dynamic-configuration-operator.yaml
+- path: vault-agent-auto-inject-webhook.yaml
+- path: kms-vault-operator.yaml

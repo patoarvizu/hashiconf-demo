@@ -4,10 +4,11 @@
 
 - [`k3d`](https://github.com/rancher/k3d)
 - [`kubectl`](https://kubernetes.io/docs/tasks/tools/install-kubectl/)
+- [`jq`](https://stedolan.github.io/jq/)
 - [`helm`](https://helm.sh/docs/intro/install/)
-- [`awscli`](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-install.html)
-- An IAM role or user with enough permissions to create a KMS key, or to encrypt with an existing one. [This](https://github.com/patoarvizu/terraform-kms-encryption/tree/master/modules/kms_key) Terraform module can help you create a KMS key with an alias.
-- A set of credentials (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) with permissions to decrypt.
+- [`helmfile`](https://github.com/roboll/helmfile)
+- [`awscli`](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-install.html) or some other means of generating an IAM role or user with enough permissions to create a KMS key, or to encrypt with an existing one. [This](https://github.com/patoarvizu/terraform-kms-encryption/tree/master/modules/kms_key) Terraform module can help you create a KMS key with an alias.
+- A set of credentials (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) with permissions to decrypt the key above.
 
 ## Launch a local Kubernetes cluster
 
@@ -19,22 +20,14 @@ We'll be using a [`k3s`](https://github.com/rancher/k3s) cluster (managed by `k3
 
 ## Preparing the infra
 
-We're not going to go into too much detail about why each of these components or resources are required, just know that without they the demo wouldn't work :)
+`helmfile` should help you set up all Vault infra required on your local cluster for this demo.
 
-- Run `kubectl apply -f crds/crds.yaml`.
-- Run `kubectl apply -f namespaces/namespaces.yaml`.
-- Run `kubectl apply -f cert-manager.yaml`.
-- Run `kubectl apply -f vault-operator.yaml`.
-- Run `kubectl apply -f vault.yaml`.
-- Create a Kubernetes `Secret` with the IAM credentials that have permission to decrypt, e.g. `kubectl -n vault create secret generic aws-secrets --from-literal=AWS_ACCESS_KEY_ID=$(echo $AWS_ACCESS_KEY_ID) --from-literal=AWS_SECRET_ACCESS_KEY=$(echo $AWS_SECRET_ACCESS_KEY)` (obviously make sure `$AWS_ACCESS_KEY_ID` and `$AWS_SECRET_ACCESS_KEY` are set on your environment first).
-  - These will be used by the `kms-vault-operator`.
-- Run `helm repo add kms-vault-operator https://patoarvizu.github.io/kms-vault-operator`.
-- Run `helm repo add vault-dynamic-configuration-operator https://patoarvizu.github.io/vault-dynamic-configuration-operator`.
-- Run `helm repo add vault-agent-auto-inject-webhook https://patoarvizu.github.io/vault-agent-auto-inject-webhook`.
-- Run `helm install kms-vault-operator kms-vault-operator/kms-vault-operator -n vault --version 0.2.0 --set global.prometheusMonitoring.enable=false`
-  - Run `kubectl -n vault get pods` after a minute or two (or prefix with `watch`) to check that all components are running. Note: some pods might briefly error or go into `CrashLoopBackOff` but they should eventually recover.
-
-This should be enough to get a Vault cluster going along with the operators/webhooks.
+- First, export the environment variables that will have the IAM credentials used to decrypt.
+  - Run `export DEMO_AWS_ACCESS_KEY_ID=<access-key-id>`, replacing `<access-key-id>` with the corresponding value.
+  - Run `export DEMO_AWS_SECRET_ACCESS_KEY=<secret-access-key>` replacing `<secret-access-key>` with the corresponding value.
+- Run `helmfile sync`
+- Done! The command should wait until all resources have been deployed and are ready.
+  - If this fails, simply re-running `helmfile sync` helps in most cases.
 
 ## Encrypt secret for demo-app
 
@@ -45,20 +38,25 @@ Assuming you already have valid IAM credentials on your environment:
 - Copy the `CiphertextBlob` field of the json response.
 - Open `demo-app/demo-app-secret.yaml` and paste the ciphertext above as the value for `encryptedSecret`.
 - Run `kubectl apply -f demo-app/demo-app-secret.yaml`.
-- Run `kubectl describe kmsvaultsecret demo-app`. Make sure that there's an event at the bottom with a message like `Wrote secret demo-app to secret/demo-app`.
+- Run `kubectl describe kmsvaultsecret demo-app`. Make sure that there's an event at the bottom with a message like `Wrote secret demo-app to secret/demo-app`. This secret was automatically injected by the [`kms-vault-operator`](https://github.com/patoarvizu/vault-dynamic-configuration-operator).
   - Notice that the string you see there is not the plaintext secret but the KMS-encrypted version of it. That's what we want.
 
 ## Run demo-app
 
 Now let's tie everything together and make sure that our app can authenticate with Vault and read the secret we just created.
 
+- Before deploying the app, run `kubectl -n vault get vault vault -o json | jq -r '.spec.externalConfig.policies'`. The only pre-existing policy shold be `allow_secrets`, which is used by the `kms-vault-operator`.
 - Run `kubectl apply -f demo-app/demo-app.yaml`
+- Run `kubectl -n vault get vault vault -o json | jq -r '.spec.externalConfig.policies'` again. Notice that a new policy called `demo-app` has just shown up! This policy was automatically added by the the [`vault-dynamic-configuration-operator`](https://github.com/patoarvizu/vault-dynamic-configuration-operator) and it gives the `demo-app` role read-only access to `secret/demo-app` only.
+  - Note that this is the "desired" state for the `Vault` custom resource, and doesn't necessarily reflect the actual configuration of Vault. It can take about a minute or two for the `vault-operator` to sync up the configuration with the backend.
 - Run `kubectl get pods` a couple of times until the pods stabilize (or with `watch`).
 - Run `kubectl get pods -l app=demo-app -o json | jq -r '.items[0].spec.containers'`. This should show you the cointainers running on that pod.
-  - Notice how there's an additional container (`vault-agent`) that's not explicitly defined in the `demo-app` deployment. Additionally, the main `demo-app` container has a new environment variable (`VAULT_ADDR`) that was injected automatically as well, to point it to the local `vault-agent` container.
+  - Notice how there's an additional container (`vault-agent`) that's not explicitly defined in the `demo-app` deployment (which you can verify by running `kubectl describe deployment demo-app`).
+  - Additionally, the main `demo-app` container has a new environment variable (`VAULT_ADDR`) that was injected automatically as well, to point it to the local `vault-agent` container.
+  - These modifications were done by the [`vault-agent-auto-inject-webhook`](https://github.com/patoarvizu/vault-agent-auto-inject-webhook).
 - Test it with `curl localhost:8080/hello`.
   - This should return `Hello, this is a secret!` (or whatever text you encrypted).
-
+  - If you get `I can't read that secret :(`, it means the backend policies haven't synced up yet, give it a little bit more time.
 
 ## Run another-demo-app
 
@@ -66,7 +64,7 @@ Now it's time to deploy a second app and validate that they can run independentl
 
 First, let's encrypt a different secret for this second app, following similar steps as above, just make the text something else, e.g. `echo Hey, this is another secret! | aws kms encrypt --key-id alias/<my-alias> --plaintext fileb:///dev/stdin`. The rest of the steps should be the same, except you'll modify `demo-app/another-demo-app-secret.yaml` instead. Run `kubectl apply -f demo-app/another-demo-app-secret.yaml`.
 
-Now let's deploy this second application. Run `kubectl apply -f demo-app/another-demo-app.yaml`, give it a few seconds, then run `kubectl get pods` to check that both services are running successfully. Now, run `curl localhost:8081/hello` and you should get `Hey, this is another secret!`, or whatever string you encrypted for this second app.
+Now let's deploy this second application. Run `kubectl apply -f demo-app/another-demo-app.yaml`, give it a few seconds, then run `kubectl get pods` to check that both services are running successfully, and also check that the new policy was added by running `kubectl -n vault get vault vault -o json | jq -r '.spec.externalConfig.policies`. Wait about a minute to allow the `vault-operator` to catch up, then run `curl localhost:8081/hello` and you should get `Hey, this is another secret!`, (or the string you encrypted for this second app above). Remember that if you get `I can't read that secret :(`, you might need to wait a little longer for the policies to sync up.
 
 ## Change things up
 

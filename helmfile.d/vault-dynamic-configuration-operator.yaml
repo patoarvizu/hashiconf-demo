@@ -1,0 +1,13 @@
+repositories:
+- name: vault-dynamic-configuration-operator
+  url: https://patoarvizu.github.io/vault-dynamic-configuration-operator
+
+releases:
+- name: vault-dynamic-configuration-operator
+  namespace: vault
+  chart: vault-dynamic-configuration-operator/vault-dynamic-configuration-operator
+  version: 0.0.0
+  wait: true
+  set:
+  - name: prometheusMonitoring.enable
+    value: false

@@ -1,0 +1,13 @@
+repositories:
+- name: vault-agent-auto-inject-webhook
+  url: https://patoarvizu.github.io/vault-agent-auto-inject-webhook
+
+releases:
+- name: vault-agent-auto-inject-webhook
+  namespace: vault
+  chart: vault-agent-auto-inject-webhook/vault-agent-auto-inject-webhook
+  version: 0.0.0
+  wait: true
+  set:
+  - name: prometheusMonitoring.enable
+    value: false
